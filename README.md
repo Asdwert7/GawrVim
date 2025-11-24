@@ -3,11 +3,11 @@
 ln -sf /Users/asdmac/Developer/GawrVim ~/.config/nvim 
 ```
 ## Если вы скачали через пакетный менеджер
-    1. Шаг 1: 
-    ```zsh
-    mkdir -p ~/.config # Создание файла конфигурации по умолчанию
-    ```
-    2. Шаг 2: 
-    ```zsh
-    ln -sf /Users/asdmac/Developer/GawrVim ~/.config/nvim
-    ```
+1. Шаг 1: 
+```zsh
+mkdir -p ~/.config # Создание файла конфигурации по умолчанию
+```
+2. Шаг 2: 
+```zsh
+ln -sf /Users/asdmac/Developer/GawrVim ~/.config/nvim
+```
