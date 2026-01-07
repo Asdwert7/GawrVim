@@ -2,35 +2,26 @@
 
 print("GawrVim!!!")
 
-
 -- Теперт проект перераспределен по разделам -- 
--- === База GawrVim === 
+-- === CORE GawrVim === 
+require('gawrvim.lazy_loader')
 
-
--- === Плагины GawrVim === 
-require('gawrvim.core.lazy_loader')
-
-
-
-
-
-
+-- === Plugins GawrVim === 
+require('gawrvim.plugins.lsp_dev') -- Подсветка синтаксиса лсп сервер
+require('gawrvim.plugins.cmp')     -- Автодополнение и подсказки работают вместе с лсп
+--require('plugins.mason')      	   -- Менеджер инструментов
+--require('plugins.colorizer')       -- Кастомная подсветка в коде
+--require('plugins.lualine')         -- Красивый(в теории) статус бар 
+--require('plugins.comment')         -- Ставит коментарий для любого языка по кнопке типа /* */ // -- # и тд
+--require('plugins.trouble')         -- Подсветка для ошибок работает в интеграции с lsp
+-- require('plugins.whichkey')        -- Подсказка горячих клавиш
 
 -- === 🦈 Опции для GawrVim ===
-local o = vim.opt -- переменная 
-require('gawrvim.plugins.options')
-require('gawrvim.plugins.themes')
-
-
+-- require('gawrvim.plugins.themes')
+-- require('gawrvim.plugins.options')
 
 -- === 🦈 Апи для GawrVim ===
 local a = vim.api
-
-
-
--- === Мапинги для GawrVim ===
-
-
 
 -- === Приветствие (пока что) ===
 -- a.nvim_echo({{"GawrVim loaded ✓", "MoreMsg"}}, false, {})
