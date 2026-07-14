@@ -1,19 +1,23 @@
 -- === 🦈 Опции для GawrVim ===
-local o = vim.opt -- переменная 
-o.number = true             -- абсолютные номера
-o.relativenumber = true    -- относительные номера (Отчет идет от теккущей строки)
-o.cursorline = true         -- подсветка текущей строки
-o.termguicolors = true      -- включаем поддержку 24-битных цветов
-o.wrap = false             -- отключаем перенос длинных строк
-o.scrolloff = 4             -- отступ сверху/снизу= при прокрутке
--- o.clipboard = "unnamedplus" -- общий буфер-обмена с macOS
-o.schedule(function() vim.opt.clipboard = 'unnamedplus' end) -- лучше версия
-o.updatetime = 250
-o.opt.showmode = false   -- Скрывает индикатор режима (например, -- INSERT --) внизу
+-- Editor defaults. Загружается через gawrvim.core до UI/плагинов.
 
-o.breakindent = false -- При переносе длинной строки (из-за textwidth или wrap) следующая строка будет с отступом, как будто продолжение текущей
-o.undofile = false    -- Сохраняет историю отмен (undo) в файле .un~ в той же директории, что и файл
-o.ignorecase = false  -- поиск станет чувствителен к регистру
-o.signcolumn = 'yes'  -- Всегда показывает колонку для сигналов (signs) — например, для Git (изменения), LSP (ошибки, предупреждения)
-o.list = false        -- Не показывать "невидимые" символы (пробелы, табы, концы строк)
-o.scrolloff = 10      -- Оставляет минимум 10 строк сверху и снизу от курсора при прокрутке
+local o = vim.opt
+
+o.number = true -- абсолютные номера
+o.relativenumber = true -- относительные номера (отчёт от текущей строки)
+o.cursorline = true -- подсветка текущей строки
+o.termguicolors = true -- 24-битные цвета
+o.wrap = false -- без переноса длинных строк
+o.scrolloff = 10 -- минимум строк сверху/снизу от курсора при прокрутке
+o.updatetime = 250
+o.showmode = false -- скрыть -- INSERT -- (когда появится statusline)
+o.breakindent = false
+o.undofile = false -- история undo НЕ пишется на диск
+o.ignorecase = false -- поиск чувствителен к регистру
+o.signcolumn = "yes" -- колонка для Git/LSP signs
+o.list = false -- не показывать невидимые символы
+
+-- clipboard после старта, чтобы не тормозить UI на медленных clipboard-провайдерах
+vim.schedule(function()
+  vim.opt.clipboard = "unnamedplus"
+end)

@@ -1,10 +1,10 @@
 -- 🌊 GawrVim init.lua
+-- L0 bootstrap: сначала core (options), затем lazy.nvim.
+-- Прямые require LSP/CMP пока оставлены — вынос в plugin specs = следующий модуль.
 
-print("GawrVim!!!")
-
--- Теперт проект перераспределен по разделам -- 
--- === CORE GawrVim === 
-require('gawrvim.lazy_loader')
+-- === CORE GawrVim ===
+require("gawrvim.core")
+require("gawrvim.lazy_loader")
 
 -- === Plugins GawrVim === 
 require('gawrvim.plugins.lsp_dev') -- Подсветка синтаксиса лсп сервер

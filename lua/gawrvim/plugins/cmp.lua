@@ -19,7 +19,7 @@ cmp.setup({
       else
         fallback()
       end
-    end, { "i", "s" }),
+    end, { "i", "s", "a" }),
 
     -- Shift-Tab делает обратное действие для TAB
     ["<S-Tab>"] = cmp.mapping(function(fallback) 
@@ -30,16 +30,17 @@ cmp.setup({
       else
         fallback()
       end
-    end, { "i", "s" }),
+    end, { "i", "s", "a" }),
   }),
 
   sources = cmp.config.sources({
-      { name = "nvim_lsp", priority = 1000 },
+      { name = "nvim_lsp", priority = 1000 , keyword_length = 2},
       { name = "luasnip",  priority = 750 },
       { name = "buffer",   priority = 250, keyword_length = 3 },
 
       
   }),
+  -- == СортировОЧКА === 
   sorting = {
     priority_weight = 2,
     comparators = {
