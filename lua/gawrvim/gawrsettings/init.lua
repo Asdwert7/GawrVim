@@ -1,22 +1,26 @@
--- GawrSettings: языковые режимы командами.
---   :Gawrcpp lsp dbb cmp   включить флаги        :Gawrcpp -dbb   выключить флаг
---   :Gawrcpp all / off     всё вкл / всё выкл    :Gawrcpp        статус языка
---   :Gawrcpp! lsp          то же + запомнить (JSON) как дефолт для следующих запусков
--- Команды: Gawrcpp, Gawrcs, Gawrpy, Gawrlua (+ :GawrStatus, :GawrInstall).
--- Пользовательские команды Neovim обязаны начинаться с большой буквы, поэтому
--- вводить можно и gawrcpp — в начале командной строки оно превращается в Gawrcpp.
+-- GawrSettings: языковые режимы командами (подробности — README.md, раздел GawrSettings).
+--   :Gawrcpp lsp dbb cmp      включить флаги            :Gawrcpp -dbb     выключить флаг
+--   :Gawrcpp all | off        все флаги вкл / выкл       :Gawrcpp          статус
+--   :Gawrcpp set default lsp  включить и запомнить как дефолт этого языка
+--   :Gawrcpp reset default    всё выключить и забыть сохранённые дефолты
+--   :Gawrall <то же самое>    применить ко всем языкам; неподдерживаемые флаги пропускаются
+-- Команды: Gawrcpp, Gawrcs, Gawrpy, Gawrlua, Gawrall, GawrStatus, GawrInstall, Dbb.
+-- Команды Neovim начинаются с большой буквы, поэтому gawrcpp в начале командной строки
+-- автоматически превращается в Gawrcpp.
 
 local langs = require("gawrvim.gawrsettings.languages")
+local debugger = require("gawrvim.gawrsettings.debugger")
 
 local M = {}
 
 local FLAGS = { "lsp", "dbb", "cmp", "tidy" }
+local APPLY_ORDER = { "tidy", "cmp", "dbb", "lsp" } -- tidy/cmp до lsp: сервер стартует сразу с нужными опциями
+local KNOWN = { lsp = true, dbb = true, cmp = true, tidy = true }
 local mason_bin = vim.fn.stdpath("data") .. "/mason/bin"
 local store = vim.fn.stdpath("state") .. "/gawrsettings.json"
 
 local state = {} -- state[lang][flag] = bool
 local ft_lang = {} -- filetype → lang
-local dap_keys_on = false
 
 -- ───────────────────────── helpers ─────────────────────────
 
@@ -26,6 +30,12 @@ end
 
 local function supports(lang, flag)
   return langs[lang][flag] ~= nil and langs[lang][flag] ~= false
+end
+
+local function supported_flags(lang)
+  return vim.tbl_filter(function(f)
+    return supports(lang, f)
+  end, FLAGS)
 end
 
 local function lazy_load(...)
@@ -42,9 +52,9 @@ local function read_saved()
   return ok and type(data) == "table" and data or {}
 end
 
-local function write_saved(lang)
+local function write_saved(lang, flags) -- flags == nil → забыть сохранённое для языка
   local saved = read_saved()
-  saved[lang] = vim.deepcopy(state[lang])
+  saved[lang] = flags and vim.deepcopy(flags) or nil
   vim.fn.mkdir(vim.fn.fnamemodify(store, ":h"), "p")
   local f = assert(io.open(store, "w"))
   f:write(vim.json.encode(saved))
@@ -56,9 +66,51 @@ function M.is_on_for_buf(buf, flag)
   return lang ~= nil and state[lang][flag] == true
 end
 
+-- ───────────────────────── пояснения пользователю (одно сообщение на команду) ─────────────────────────
+
+local notes = { unsupported = {}, unknown = {} } -- unsupported[lang] = { flag, ... }
+
+local function note_unsupported(lang, flag)
+  notes.unsupported[lang] = notes.unsupported[lang] or {}
+  table.insert(notes.unsupported[lang], flag)
+end
+
+local function note_unknown(flag)
+  notes.unknown[flag] = true
+end
+
+-- Собирает все накопленные пояснения в одно сообщение и сбрасывает сборщик.
+local function flush_notes()
+  local lines = {}
+  if next(notes.unsupported) then
+    local all, details = {}, {}
+    for _, lang in ipairs(langs.order) do
+      local fl = notes.unsupported[lang]
+      if fl then
+        table.insert(details, ("  %s: %s"):format(lang, table.concat(fl, ", ")))
+        for _, f in ipairs(fl) do
+          all[f] = true
+        end
+      end
+    end
+    local names = vim.tbl_filter(function(f)
+      return all[f]
+    end, FLAGS)
+    table.insert(lines, ("Некоторые языки не поддерживают флаги [%s], за справкой смотрите README.md"):format(table.concat(names, ", ")))
+    vim.list_extend(lines, details)
+  end
+  if next(notes.unknown) then
+    table.insert(lines, "Неизвестные флаги: " .. table.concat(vim.tbl_keys(notes.unknown), ", ") .. " (есть: lsp, dbb, cmp, tidy)")
+  end
+  notes = { unsupported = {}, unknown = {} }
+  if #lines > 0 then
+    notify(table.concat(lines, "\n"), vim.log.levels.WARN)
+  end
+end
+
 -- ───────────────────────── подсветка (часть флага lsp) ─────────────────────────
 
-local function ts_start(buf, lang)
+local function ts_start(buf)
   local ft = vim.bo[buf].filetype
   local ts_lang = vim.treesitter.language.get_lang(ft) or ft
   if pcall(vim.treesitter.start, buf, ts_lang) then
@@ -73,7 +125,7 @@ local function refresh_highlight(buf, lang)
     return
   end
   if state[lang].lsp then
-    ts_start(buf, lang)
+    ts_start(buf)
   else
     pcall(vim.treesitter.stop, buf)
     vim.bo[buf].syntax = "OFF"
@@ -158,46 +210,9 @@ end
 
 -- ───────────────────────── dbb ─────────────────────────
 
-local dap_maps = {
-  { "<F5>", "continue", "Debug: continue" },
-  { "<F9>", "toggle_breakpoint", "Debug: breakpoint" },
-  { "<F10>", "step_over", "Debug: step over" },
-  { "<F11>", "step_into", "Debug: step into" },
-  { "<F12>", "step_out", "Debug: step out" },
-  { "<leader>dc", "continue", "Debug: continue" },
-  { "<leader>db", "toggle_breakpoint", "Debug: breakpoint" },
-  { "<leader>do", "step_over", "Debug: step over" },
-  { "<leader>di", "step_into", "Debug: step into" },
-  { "<leader>dO", "step_out", "Debug: step out" },
-  { "<leader>dx", "terminate", "Debug: terminate" },
-}
-
-local function set_dap_keys(on)
-  if on == dap_keys_on then
-    return
-  end
-  dap_keys_on = on
-  for _, m in ipairs(dap_maps) do
-    if on then
-      vim.keymap.set("n", m[1], function()
-        require("dap")[m[2]]()
-      end, { desc = m[3] })
-    else
-      pcall(vim.keymap.del, "n", m[1])
-    end
-  end
-  if on then
-    vim.keymap.set("n", "<leader>du", function()
-      require("dapui").toggle()
-    end, { desc = "Debug: UI" })
-  else
-    pcall(vim.keymap.del, "n", "<leader>du")
-  end
-end
-
 local function any_dbb()
-  for name in pairs(langs) do
-    if name ~= "order" and state[name].dbb then
+  for _, name in ipairs(langs.order) do
+    if state[name] and state[name].dbb then
       return true
     end
   end
@@ -225,7 +240,7 @@ local function apply_dbb(lang, on)
       require("dap").configurations[ft] = nil
     end
   end
-  set_dap_keys(any_dbb())
+  debugger.attach(any_dbb()) -- клик по полю, знаки, :Dbb, <leader>d…
 end
 
 -- ───────────────────────── cmp (автодополнение + автоформат) ─────────────────────────
@@ -233,9 +248,7 @@ end
 local function apply_cmp(lang, on)
   if on then
     lazy_load("nvim-cmp") -- сам cmp сверяется с флагом в enabled()
-    if state[lang].lsp then
-      restart_lsp(lang) -- чтобы сервер получил capabilities cmp
-    end
+    restart_lsp(lang) -- чтобы сервер получил capabilities cmp
   end
 end
 
@@ -251,27 +264,23 @@ local appliers = {
 }
 
 local function set_flag(lang, flag, on)
-  if not supports(lang, flag) then
-    notify(("для %s нет флага '%s'"):format(lang, flag), vim.log.levels.WARN)
-    return false
-  end
   if state[lang][flag] == on then
-    return true
+    return
   end
   state[lang][flag] = on
   local ok, err = pcall(appliers[flag], lang, on)
   if not ok then
     state[lang][flag] = not on
     notify(("%s %s: %s"):format(lang, flag, tostring(err)), vim.log.levels.ERROR)
-    return false
   end
-  return true
 end
 
-local function supported_flags(lang)
-  return vim.tbl_filter(function(f)
-    return supports(lang, f)
-  end, FLAGS)
+local function apply_changes(lang, changes)
+  for _, f in ipairs(APPLY_ORDER) do
+    if changes[f] ~= nil then
+      set_flag(lang, f, changes[f])
+    end
+  end
 end
 
 local function status_line(lang)
@@ -282,44 +291,131 @@ local function status_line(lang)
   return ("%-4s %s"):format(lang, table.concat(parts, "  "))
 end
 
-local function run_command(lang, o)
-  local args = o.fargs
-  if #args == 0 or args[1] == "status" then
-    notify(status_line(lang))
-    return
+-- ───────────────────────── разбор команд ─────────────────────────
+
+-- Токены → { {name=, value=}, ... }
+local function tokenize(words)
+  local out = {}
+  for _, w in ipairs(words) do
+    if w:sub(1, 1) == "-" then
+      table.insert(out, { name = w:sub(2), value = false })
+    else
+      table.insert(out, { name = w, value = true })
+    end
   end
+  return out
+end
+
+-- Токены → изменения для конкретного языка; неподдерживаемое пропускает и копит пояснения.
+local function resolve(lang, tokens)
   local changes = {}
-  for _, a in ipairs(args) do
-    if a == "all" then
+  for _, t in ipairs(tokens) do
+    if t.name == "all" then
       for _, f in ipairs(supported_flags(lang)) do
         if f ~= "tidy" then
-          changes[f] = true
+          changes[f] = t.value
         end
       end
-    elseif a == "off" then
+    elseif t.name == "off" then
       for _, f in ipairs(supported_flags(lang)) do
         changes[f] = false
       end
-    elseif a:sub(1, 1) == "-" then
-      changes[a:sub(2)] = false
+    elseif not KNOWN[t.name] then
+      note_unknown(t.name)
+    elseif not supports(lang, t.name) then
+      note_unsupported(lang, t.name)
     else
-      changes[a] = true
+      changes[t.name] = t.value
     end
   end
-  -- порядок: tidy и cmp до lsp, чтобы сервер стартовал сразу с нужными опциями
-  for _, f in ipairs({ "tidy", "cmp", "dbb", "lsp" }) do
-    if changes[f] ~= nil then
-      set_flag(lang, f, changes[f])
+  return changes
+end
+
+-- Общий исполнитель для :Gawr<lang> и :Gawrall.
+local function run(lang_list, words)
+  local first, second = words[1], words[2]
+  local summary = {}
+
+  if #words == 0 or first == "status" then
+    -- только статус
+  elseif first == "reset" and second == "default" then
+    for _, lang in ipairs(lang_list) do
+      local off = {}
+      for _, f in ipairs(supported_flags(lang)) do
+        off[f] = false
+      end
+      apply_changes(lang, off)
+      write_saved(lang, nil)
     end
-    changes[f] = nil
+    table.insert(summary, "дефолты сброшены, всё выключено")
+  elseif first == "set" and second == "default" then
+    local tokens = tokenize(vim.list_slice(words, 3))
+    for _, lang in ipairs(lang_list) do
+      local want = resolve(lang, tokens)
+      local desired = {}
+      for _, f in ipairs(supported_flags(lang)) do
+        desired[f] = want[f] == true
+      end
+      apply_changes(lang, desired)
+      write_saved(lang, desired)
+    end
+    table.insert(summary, "сохранено как дефолт")
+  elseif first == "set" or first == "reset" then
+    notify(("после '%s' нужно слово default, например: %s default lsp"):format(first, first), vim.log.levels.WARN)
+    return
+  else
+    local tokens = tokenize(words)
+    for _, lang in ipairs(lang_list) do
+      apply_changes(lang, resolve(lang, tokens))
+    end
   end
-  for unknown in pairs(changes) do
-    notify(("неизвестный флаг '%s' (есть: %s)"):format(unknown, table.concat(supported_flags(lang), ", ")), vim.log.levels.WARN)
+
+  flush_notes()
+  local lines = {}
+  for _, lang in ipairs(lang_list) do
+    table.insert(lines, status_line(lang))
   end
-  if o.bang then
-    write_saved(lang)
+  local tail = #summary > 0 and ("  (" .. summary[1] .. ")") or ""
+  if #lang_list == 1 then
+    notify(lines[1] .. tail)
+  else
+    notify((tail ~= "" and tail:gsub("^%s+", "") .. "\n" or "\n") .. table.concat(lines, "\n"))
   end
-  notify(status_line(lang) .. (o.bang and "  (сохранено)" or ""))
+end
+
+local function completion(supported_fn)
+  return function(lead, cmdline)
+    local words = vim.split(vim.trim(cmdline), "%s+")
+    table.remove(words, 1) -- имя команды
+    if cmdline:match("%s$") == nil and #words > 0 then
+      table.remove(words) -- слово, которое сейчас набирается
+    end
+    local items
+    if words[1] == "reset" or (words[1] == "set" and #words == 1) then
+      items = { "default" }
+    elseif #words == 0 then
+      items = { "status", "off", "all", "set", "reset" }
+      vim.list_extend(items, supported_fn())
+      vim.list_extend(items, vim.tbl_map(function(f)
+        return "-" .. f
+      end, supported_fn()))
+    else
+      items = { "off", "all" }
+      vim.list_extend(items, supported_fn())
+      vim.list_extend(items, vim.tbl_map(function(f)
+        return "-" .. f
+      end, supported_fn()))
+    end
+    return vim.tbl_filter(function(s)
+      return s:find(lead, 1, true) == 1
+    end, items)
+  end
+end
+
+local function abbrev(cmd)
+  vim.cmd(([[cnoreabbrev <expr> %s (getcmdtype() ==# ':' && getcmdline() ==# '%s') ? '%s' : '%s']]):format(
+    cmd:lower(), cmd:lower(), cmd, cmd:lower()
+  ))
 end
 
 -- ───────────────────────── setup ─────────────────────────
@@ -330,7 +426,6 @@ function M.setup()
     vim.env.PATH = mason_bin .. ":" .. vim.env.PATH
   end
 
-  local saved = read_saved()
   for _, lang in ipairs(langs.order) do
     state[lang] = {}
     for _, ft in ipairs(langs[lang].fts) do
@@ -367,35 +462,30 @@ function M.setup()
   for _, lang in ipairs(langs.order) do
     local cmd = "Gawr" .. lang
     vim.api.nvim_create_user_command(cmd, function(o)
-      run_command(lang, o)
+      run({ lang }, o.fargs)
     end, {
       nargs = "*",
-      bang = true,
       desc = "GawrSettings: " .. lang,
-      complete = function()
-        local items = { "status", "off" }
-        if #supported_flags(lang) > 1 then
-          table.insert(items, "all")
-        end
-        for _, f in ipairs(supported_flags(lang)) do
-          table.insert(items, f)
-          table.insert(items, "-" .. f)
-        end
-        return items
-      end,
+      complete = completion(function()
+        return supported_flags(lang)
+      end),
     })
-    -- gawrcpp → Gawrcpp в начале командной строки
-    vim.cmd(([[cnoreabbrev <expr> %s (getcmdtype() ==# ':' && getcmdline() ==# '%s') ? '%s' : '%s']]):format(
-      cmd:lower(), cmd:lower(), cmd, cmd:lower()
-    ))
+    abbrev(cmd)
   end
 
+  vim.api.nvim_create_user_command("Gawrall", function(o)
+    run(langs.order, o.fargs)
+  end, {
+    nargs = "*",
+    desc = "GawrSettings: все языки",
+    complete = completion(function()
+      return { "lsp", "dbb", "cmp", "tidy" }
+    end),
+  })
+  abbrev("Gawrall")
+
   vim.api.nvim_create_user_command("GawrStatus", function()
-    local lines = {}
-    for _, lang in ipairs(langs.order) do
-      table.insert(lines, status_line(lang))
-    end
-    notify("\n" .. table.concat(lines, "\n"))
+    run(langs.order, {})
   end, {})
 
   vim.api.nvim_create_user_command("GawrInstall", function()
@@ -407,14 +497,18 @@ function M.setup()
     vim.cmd("MasonInstall " .. table.concat(pkgs, " "))
   end, { desc = "Установить все серверы/отладчики/форматтеры через Mason" })
 
-  -- Применяем дефолты/сохранённое (по умолчанию всё выключено)
+  debugger.setup_commands(any_dbb)
+
+  -- Применяем сохранённые дефолты (set default). Без них всё выключено.
+  local saved = read_saved()
   for _, lang in ipairs(langs.order) do
-    for _, f in ipairs({ "tidy", "cmp", "dbb", "lsp" }) do
-      local want = (saved[lang] or {})[f]
-      if want == true and supports(lang, f) then
-        set_flag(lang, f, true)
+    local changes = {}
+    for _, f in ipairs(supported_flags(lang)) do
+      if (saved[lang] or {})[f] == true then
+        changes[f] = true
       end
     end
+    apply_changes(lang, changes)
   end
 end
 
