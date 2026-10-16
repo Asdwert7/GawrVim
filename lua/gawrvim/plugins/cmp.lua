@@ -1,17 +1,22 @@
 return {
   "hrsh7th/nvim-cmp",
-  enabled = false, -- временно отключён: ошибки при входе в insert mode
   event = "InsertEnter",
   dependencies = {
     "hrsh7th/cmp-nvim-lsp",
     "L3MON4D3/LuaSnip",
     "saadparwaiz1/cmp_luasnip",
+    "hrsh7th/cmp-buffer",
+    "hrsh7th/cmp-path",
   },
   config = function()
     local cmp = require("cmp")
     local luasnip = require("luasnip")
 
     cmp.setup({
+      -- включается флагом cmp из gawrsettings
+      enabled = function()
+        return require("gawrvim.gawrsettings").is_on_for_buf(0, "cmp")
+      end,
       snippet = {
         expand = function(args)
           luasnip.lsp_expand(args.body)
@@ -28,7 +33,7 @@ return {
           else
             fallback()
           end
-        end, { "i", "s", "a" }),
+        end, { "i", "s" }),
         ["<S-Tab>"] = cmp.mapping(function(fallback)
           if cmp.visible() then
             cmp.select_prev_item()
@@ -37,13 +42,14 @@ return {
           else
             fallback()
           end
-        end, { "i", "s", "a" }),
+        end, { "i", "s" }),
       }),
 
       sources = cmp.config.sources({
         { name = "nvim_lsp", priority = 1000, keyword_length = 2 },
         { name = "luasnip", priority = 750 },
-        -- buffer + cmp-buffer → модуль P3
+        { name = "path", priority = 500 },
+        { name = "buffer", priority = 250, keyword_length = 3 },
       }),
 
       sorting = {

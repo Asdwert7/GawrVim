@@ -26,3 +26,6 @@ require("lazy").setup({
   checker = { enabled = false },
   change_detection = { notify = false },
 })
+
+-- GawrSettings: языковые режимы (:Gawrcpp / :Gawrcs / :Gawrpy / :Gawrlua)
+require("gawrvim.gawrsettings").setup()
