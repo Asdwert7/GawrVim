@@ -1,16 +1,8 @@
+-- nvim-treesitter, ветка main (Neovim 0.12). Не поддерживает lazy-loading.
+-- Парсеры ставятся из gawrsettings при включении флага lsp для языка.
 return {
-  {
-    "nvim-treesitter/nvim-treesitter",
-    build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
-    opts = {
-      ensure_installed = { "cpp", "c", "lua", "vim", "vimdoc", "query" },
-      highlight = { enable = true },
-      indent = { enable = true },
-    },
-    config = function(_, opts)
-      require("nvim-treesitter.configs").setup(opts)
-    end,
-  },
+  "nvim-treesitter/nvim-treesitter",
+  branch = "main",
+  lazy = false,
+  build = ":TSUpdate",
 }
-

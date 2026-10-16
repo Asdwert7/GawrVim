@@ -328,7 +328,13 @@ local function text_header()
 [[]]
     }
 end
-return {
+local function telescope(cmd)
+  return function()
+    vim.cmd("Telescope " .. cmd)
+  end
+end
+
+local dashboard_opts = {
     theme = 'doom',
     config = {
         header = default_text_header(),
@@ -341,7 +347,7 @@ return {
                 key = 'f',
                 keymap = 'SPC f f',
                 key_hl = 'Number',
-                action = ':Telescope find_files'
+                action = telescope('find_files'),
             }, {
 				icon = '󰱾 ',
                 icon_hl = 'Title',
@@ -350,7 +356,7 @@ return {
                 key = 'r',
                 keymap = 'SPC f r',
                 key_hl = 'Number',
-                action = ':Telescope oldfiles'
+                action = telescope('oldfiles'),
             }, {
                 icon = ' ',
                 icon_hl = 'Title',
@@ -359,7 +365,7 @@ return {
                 key = 'w',
                 keymap = 'SPC f w',
                 key_hl = 'Number',
-                action = ':Telescope live_grep'
+                action = telescope('live_grep'),
             }, {
                 icon = ' ',
                 icon_hl = 'Title',
@@ -368,9 +374,24 @@ return {
                 key = 'b',
                 keymap = 'SPC g b',
                 key_hl = 'Number',
-                action = ':Telescope git_branches'
+                action = telescope('git_branches'),
             }
 
         }
     }
+}
+
+return {
+  "nvimdev/dashboard-nvim",
+  event = "VimEnter",
+  cond = function()
+    return vim.fn.argc() == 0
+  end,
+  dependencies = { "nvim-tree/nvim-web-devicons" },
+  config = function()
+    require("dashboard").setup(dashboard_opts)
+    vim.schedule(function()
+      vim.cmd("Dashboard")
+    end)
+  end,
 }
