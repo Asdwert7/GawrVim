@@ -1,9 +1,11 @@
 -- Neovim 0.11+ native LSP config
-local caps = require("cmp_nvim_lsp").default_capabilities() -- создаёт таблицу возможностей клиента, расширенную под cmp.
+-- cmp временно отключён → без cmp_nvim_lsp; вернём, когда включим cmp обратно.
+local ok, cmp_lsp = pcall(require, "cmp_nvim_lsp")
+local caps = ok and cmp_lsp.default_capabilities() or vim.lsp.protocol.make_client_capabilities()
 
 
 vim.lsp.config("clangd", {
-  cmd = { "clangd", "--background-index", "--clang-tidy" },
+  -- cmd и enable управляются модулем gawrsettings (:GawrOn lsp / :GawrOn clang_tidy)
   capabilities = caps,
   root_markers = {
   "compile_commands.json",
@@ -14,7 +16,6 @@ vim.lsp.config("clangd", {
   },
 })
 
-vim.lsp.enable({ "clangd" })
 
 
 
